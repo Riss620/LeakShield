@@ -12,11 +12,11 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "https://leakshield-backend.onrender.com/api/:match*"
+      "destination": "https://leakshield-pkgi.onrender.com/api/:match*"
     },
     {
       "source": "/auth/:match*",
-      "destination": "https://leakshield-backend.onrender.com/auth/:match*"
+      "destination": "https://leakshield-pkgi.onrender.com/auth/:match*"
     },
     {
       "source": "/(.*)",
