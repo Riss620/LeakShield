@@ -1,5 +1,11 @@
 # render.yaml - Infrastructure as Code for LeakShield
-# Deploy all services (Frontend, Backend, Python Worker, and Redis) to Render.com in one click.
+# Deploy backend, worker, and databases to Render.com.
+
+databases:
+  - name: leakshield-db
+    databaseName: leakshield_db
+    user: leakshield
+    plan: free
 
 services:
   # 1. Redis Cache & Queue
@@ -13,7 +19,7 @@ services:
     name: leakshield-backend
     env: node
     buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
+    startCommand: cd backend && node src/index.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -24,8 +30,12 @@ services:
           type: redis
           name: leakshield-redis
           property: connectionString
-      - key: DB_PATH
-        value: /data/leakshield.sqlite
+      - key: DATABASE_URL
+        fromDatabase:
+          name: leakshield-db
+          property: connectionString
+      - key: FRONTEND_URL
+        value: "https://leak-shield-one.vercel.app"
       # Required API Keys (Set these securely in the Render Dashboard)
       - key: GITHUB_CLIENT_ID
         sync: false
@@ -37,10 +47,6 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
-    disk:
-      name: sqlite-data
-      mountPath: /data
-      sizeGB: 1
 
   # 3. Python Detection Engine (Background Worker modified as Web Service)
   - type: web
@@ -54,18 +60,3 @@ services:
           type: redis
           name: leakshield-redis
           property: connectionString
-
-  # 4. React Frontend (Static Site)
-  - type: web
-    name: leakshield-frontend
-    env: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: frontend/dist
-    # Rewrite all routing to index.html for React Router
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        value: "https://leakshield-backend.onrender.com"

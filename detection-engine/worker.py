@@ -9,8 +9,8 @@ from sqlalchemy import create_engine, text
 from tree_sitter import Language, Parser
 import tree_sitter_javascript as tsjavascript
 
-REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-POSTGRES_URL = os.getenv('POSTGRES_URL', 'postgresql://leakshield:leakshield_password@localhost:5432/leakshield_db')
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://leakshield:leakshield_password@localhost:5432/leakshield_db')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:4000')
 
 import threading
@@ -22,11 +22,11 @@ app = Flask(__name__)
 def health_check():
     return "Python Worker is running as a dummy web service!", 200
 
-print(f"Connecting to Redis at {REDIS_HOST}")
-r = redis.Redis(host=REDIS_HOST, port=6379, db=0, decode_responses=True)
+print(f"Connecting to Redis at {REDIS_URL}")
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
-print(f"Connecting to Postgres at {POSTGRES_URL}")
-engine = create_engine(POSTGRES_URL)
+print(f"Connecting to Postgres at {DATABASE_URL}")
+engine = create_engine(DATABASE_URL)
 
 # Initialize Tree-sitter
 JS_LANGUAGE = Language(tsjavascript.language())

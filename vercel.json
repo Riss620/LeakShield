@@ -7,24 +7,20 @@
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "backend/src/index.js",
-      "use": "@vercel/node"
     }
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/backend/src/index.js"
+      "source": "/api/:match*",
+      "destination": "https://leakshield-backend.onrender.com/api/:match*"
     },
     {
-      "source": "/auth/(.*)",
-      "destination": "/backend/src/index.js"
+      "source": "/auth/:match*",
+      "destination": "https://leakshield-backend.onrender.com/auth/:match*"
     },
     {
       "source": "/(.*)",
-      "destination": "/frontend/$1"
+      "destination": "/frontend/dist/index.html"
     }
   ]
 }

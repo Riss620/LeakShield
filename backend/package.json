@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=.env src/index.js",
+    "start": "node src/index.js",
     "dev": "nodemon --no-env-file --exec \"node --env-file=.env src/index.js\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

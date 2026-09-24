@@ -1,12 +1,16 @@
 const { Pool } = require('pg');
 
-const pool = new Pool({
-  user: 'leakshield',
-  host: '127.0.0.1',
-  database: 'leakshield_db',
-  password: 'leakshield_password',
-  port: 5432,
-});
+const pool = new Pool(
+  process.env.DATABASE_URL 
+    ? { connectionString: process.env.DATABASE_URL }
+    : {
+        user: 'leakshield',
+        host: '127.0.0.1',
+        database: 'leakshield_db',
+        password: 'leakshield_password',
+        port: 5432,
+      }
+);
 
 async function initDB() {
   await pool.query(`
