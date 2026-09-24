@@ -13,6 +13,15 @@ REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 POSTGRES_URL = os.getenv('POSTGRES_URL', 'postgresql://leakshield:leakshield_password@localhost:5432/leakshield_db')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:4000')
 
+import threading
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "Python Worker is running as a dummy web service!", 200
+
 print(f"Connecting to Redis at {REDIS_HOST}")
 r = redis.Redis(host=REDIS_HOST, port=6379, db=0, decode_responses=True)
 
@@ -304,50 +313,61 @@ def process_file(job):
 # =============================================================================
 # Main Worker Loop
 # =============================================================================
-print(f"Python Detection Engine v2 — {len(RULES)} rules loaded")
-print("Listening to 'scan_queue'...")
+def worker_loop():
+    print(f"Python Detection Engine v2 — {len(RULES)} rules loaded")
+    print("Listening to 'scan_queue'...")
 
-# Track scan completion
-scan_findings = {}  # scanId -> list of findings
+    # Track scan completion
+    scan_findings = {}  # scanId -> list of findings
 
-while True:
-    try:
-        item = r.blpop('scan_queue', timeout=5)
-        if item:
-            _, message = item
-            job = json.loads(message)
-            scan_id = job.get('scanId')
-            file_path = job.get('filePath', 'unknown')
-            repo_id = job.get('repositoryId', 'unknown')
+    while True:
+        try:
+            item = r.blpop('scan_queue', timeout=5)
+            if item:
+                _, message = item
+                job = json.loads(message)
+                scan_id = job.get('scanId')
+                file_path = job.get('filePath', 'unknown')
+                repo_id = job.get('repositoryId', 'unknown')
 
-            print(f"Processing: {file_path} in {repo_id} (scan:{scan_id[:8]})")
-            found = process_file(job)
+                print(f"Processing: {file_path} in {repo_id} (scan:{scan_id[:8]})")
+                found = process_file(job)
 
-            # Accumulate findings per scan
-            if scan_id not in scan_findings:
-                scan_findings[scan_id] = []
-            scan_findings[scan_id].extend(found)
+                # Accumulate findings per scan
+                if scan_id not in scan_findings:
+                    scan_findings[scan_id] = []
+                scan_findings[scan_id].extend(found)
 
-            # Check how many jobs remain for this scan
-            remaining = r.llen('scan_queue')
-            if remaining == 0:
-                # All files processed — notify backend to finalize
-                for sid, finds in list(scan_findings.items()):
-                    critical = sum(1 for f in finds if f['severity'] == 'CRITICAL')
-                    try:
-                        requests.post(f"{BACKEND_URL}/api/webhooks/scan-complete", json={
-                            "scanId": sid,
-                            "repositoryOwner": job.get('repositoryOwner', 'unknown'),
-                            "repositoryName": job.get('repositoryId', 'unknown'),
-                            "commitSha": job.get('commitSha', 'unknown'),
-                            "findingsCount": len(finds),
-                            "criticalCount": critical
-                        }, timeout=5)
-                        print(f"Scan {sid[:8]} complete: {len(finds)} findings ({critical} critical)")
-                    except Exception as e:
-                        print(f"Could not notify backend of scan completion: {e}")
-                scan_findings.clear()
+                # Check how many jobs remain for this scan
+                remaining = r.llen('scan_queue')
+                if remaining == 0:
+                    # All files processed — notify backend to finalize
+                    for sid, finds in list(scan_findings.items()):
+                        critical = sum(1 for f in finds if f['severity'] == 'CRITICAL')
+                        try:
+                            requests.post(f"{BACKEND_URL}/api/webhooks/scan-complete", json={
+                                "scanId": sid,
+                                "repositoryOwner": job.get('repositoryOwner', 'unknown'),
+                                "repositoryName": job.get('repositoryId', 'unknown'),
+                                "commitSha": job.get('commitSha', 'unknown'),
+                                "findingsCount": len(finds),
+                                "criticalCount": critical
+                            }, timeout=5)
+                            print(f"Scan {sid[:8]} complete: {len(finds)} findings ({critical} critical)")
+                        except Exception as e:
+                            print(f"Could not notify backend of scan completion: {e}")
+                    scan_findings.clear()
 
-    except Exception as e:
-        print(f"Worker error: {e}")
-        time.sleep(1)
+        except Exception as e:
+            print(f"Worker error: {e}")
+            time.sleep(1)
+
+if __name__ == '__main__':
+    # Start the actual queue worker in a background thread
+    t = threading.Thread(target=worker_loop, daemon=True)
+    t.start()
+    
+    # Start the dummy web server on the main thread so Render thinks it's a web service
+    port = int(os.getenv("PORT", 10000))
+    print(f"Starting dummy web server on port {port}...")
+    app.run(host="0.0.0.0", port=port)

@@ -4,3 +4,4 @@ psycopg2-binary
 tree-sitter
 tree-sitter-javascript
 requests
+Flask==3.0.0

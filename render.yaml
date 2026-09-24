@@ -42,8 +42,8 @@ services:
       mountPath: /data
       sizeGB: 1
 
-  # 3. Python Detection Engine (Background Worker)
-  - type: worker
+  # 3. Python Detection Engine (Background Worker modified as Web Service)
+  - type: web
     name: leakshield-worker
     env: python
     buildCommand: cd detection-engine && pip install -r requirements.txt
