@@ -54,6 +54,10 @@ app.on('sse_broadcast', ({ event, data }) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`LeakShield backend running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`LeakShield backend running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

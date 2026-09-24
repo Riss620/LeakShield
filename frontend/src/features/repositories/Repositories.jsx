@@ -10,7 +10,7 @@ export default function Repositories() {
   const [ok, setOk]                 = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/repositories')
+    fetch('/api/repositories')
       .then(r => r.json())
       .then(d => setRepos(Array.isArray(d) ? d : []))
       .catch(console.error);
@@ -21,7 +21,7 @@ export default function Repositories() {
     if (!url.trim()) return;
     setConnecting(true); setErr(''); setOk('');
     try {
-      const res  = await fetch('http://localhost:4000/api/repositories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url.trim() }) });
+      const res  = await fetch('/api/repositories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url.trim() }) });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || 'Failed to connect.'); return; }
       setRepos(prev => [{ ...data, findings: { critical: 0, high: 0 } }, ...prev.filter(r => r.id !== data.id)]);
@@ -34,7 +34,7 @@ export default function Repositories() {
 
   const handleDelete = async (id) => {
     if (!confirm('Remove this repository?')) return;
-    await fetch(`http://localhost:4000/api/repositories/${id}`, { method: 'DELETE' });
+    await fetch(`/api/repositories/${id}`, { method: 'DELETE' });
     setRepos(prev => prev.filter(r => r.id !== id));
   };
 
@@ -45,7 +45,7 @@ export default function Repositories() {
       if (!commits[0]) { alert('No commits found in this repository.'); return; }
       const sha = commits[0].sha;
       const [owner, name] = repo.fullName.split('/');
-      await fetch('http://localhost:4000/api/webhooks/github', {
+      await fetch('/api/webhooks/github', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-github-event': 'push', 'x-github-delivery': `manual-${Date.now()}` },
         body: JSON.stringify({ repository: { name, full_name: repo.fullName, html_url: repo.url, owner: { login: owner } }, pusher: { name: owner }, commits: [{ id: sha, message: 'Manual scan', author: { name: owner } }] })

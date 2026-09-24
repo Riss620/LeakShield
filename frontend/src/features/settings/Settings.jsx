@@ -65,7 +65,7 @@ export default function Settings() {
   const [groqKey, setGroqKey]             = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/settings')
+    fetch('/api/settings')
       .then(r => r.json())
       .then(d => { setStatus(d); if (d.webhookSecret) setWebhookSecret(d.webhookSecret); })
       .catch(console.error);
@@ -74,14 +74,14 @@ export default function Settings() {
   const save = async () => {
     setSaving(true); setMsg('');
     try {
-      const res = await fetch('http://localhost:4000/api/settings', {
+      const res = await fetch('/api/settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ githubToken, webhookSecret, slackWebhook, geminiKey, groqKey })
       });
       const d = await res.json();
       setMsg(res.ok ? '✓ ' + d.message : '✗ ' + (d.error || 'Save failed'));
       if (res.ok) {
-        const s = await fetch('http://localhost:4000/api/settings').then(r => r.json());
+        const s = await fetch('/api/settings').then(r => r.json());
         setStatus(s); setGithubToken(''); setSlackWebhook(''); setGeminiKey(''); setGroqKey('');
       }
     } catch { setMsg('✗ Backend not reachable'); }

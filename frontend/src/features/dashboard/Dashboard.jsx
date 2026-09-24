@@ -35,12 +35,12 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/dashboard')
+    fetch('/api/dashboard')
       .then(r => r.json())
       .then(d => { setStats(d); setLoading(false); })
       .catch(() => setLoading(false));
 
-    const es = new EventSource('http://localhost:4000/api/events');
+    const es = new EventSource('/api/events');
     es.addEventListener('finding_detected', (e) => {
       const f = JSON.parse(e.data);
       setStats(prev => ({

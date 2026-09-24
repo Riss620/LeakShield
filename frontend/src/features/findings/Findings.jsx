@@ -12,7 +12,7 @@ function AiModal({ finding, onClose }) {
   const [loading, setLoading] = useState(true);
   const [suggestion, setSuggestion] = useState('');
   useEffect(() => {
-    fetch(`http://localhost:4000/api/findings/${finding.id}/remediate`, { method: 'POST' })
+    fetch(`/api/findings/${finding.id}/remediate`, { method: 'POST' })
       .then(r => r.json())
       .then(d => { setSuggestion(d.suggestion || d.error || 'No suggestion returned.'); setLoading(false); })
       .catch(() => { setSuggestion('Could not reach the AI service. Check your API keys in Settings.'); setLoading(false); });
@@ -58,14 +58,14 @@ export default function Findings() {
   const [aiTarget,  setAiTarget]  = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/findings')
+    fetch('/api/findings')
       .then(r => r.json())
       .then(d => { setFindings(Array.isArray(d) ? d : d.findings || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
   const resolve = async (id) => {
-    await fetch(`http://localhost:4000/api/findings/${id}/resolve`, { method: 'POST' });
+    await fetch(`/api/findings/${id}/resolve`, { method: 'POST' });
     setFindings(prev => prev.map(f => f.id === id ? { ...f, status: 'RESOLVED' } : f));
   };
 

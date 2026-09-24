@@ -13,7 +13,7 @@ export default function Alerts() {
   const [filter, setFilter] = useState('ALL');
 
   useEffect(() => {
-    fetch('http://localhost:4000/api/findings')
+    fetch('/api/findings')
       .then(r => r.json())
       .then(findings => {
         const arr = Array.isArray(findings) ? findings : (findings.findings || []);
@@ -27,7 +27,7 @@ export default function Alerts() {
       })
       .catch(console.error);
 
-    const es = new EventSource('http://localhost:4000/api/events');
+    const es = new EventSource('/api/events');
     es.addEventListener('finding_detected', e => {
       const f = JSON.parse(e.data);
       setAlerts(prev => [{ id: f.id, type: f.severity, title: `${f.secretType} Detected`, message: `Found in ${f.repositoryId} — ${f.filePath}`, repo: f.repositoryId, time: new Date().toISOString(), dismissed: false }, ...prev]);
