@@ -1,0 +1,164 @@
+import { useState } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Shield, LayoutDashboard, Search, Settings, GitBranch,
+  Bell, LogOut, ChevronRight, Menu, X, Zap
+} from 'lucide-react';
+
+const NAV = [
+  { icon: LayoutDashboard, label: 'Dashboard',    path: '/app' },
+  { icon: GitBranch,       label: 'Repositories', path: '/app/repositories' },
+  { icon: Search,          label: 'Findings',     path: '/app/findings' },
+  { icon: Bell,            label: 'Alerts',       path: '/app/alerts' },
+  { icon: Settings,        label: 'Settings',     path: '/app/settings' },
+];
+
+export default function Layout() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isActive = (path) => {
+    if (path === '/app') return location.pathname === '/app';
+    return location.pathname.startsWith(path);
+  };
+
+  const SidebarInner = () => (
+    <>
+      {/* Logo */}
+      <div className="sidebar-logo">
+        <div className="sidebar-logo-icon">
+          <Shield style={{ width: 16, height: 16, color: '#fff' }} />
+        </div>
+        <span className="sidebar-logo-text">LeakShield</span>
+      </div>
+
+      {/* Nav */}
+      <div className="sidebar-section">
+        <div className="sidebar-section-label">Main</div>
+        {NAV.slice(0, 4).map(({ icon: Icon, label, path }) => (
+          <Link
+            key={path}
+            to={path}
+            onClick={() => setMobileOpen(false)}
+            className={`nav-link ${isActive(path) ? 'active' : ''}`}
+          >
+            <Icon className="nav-link-icon" />
+            {label}
+            {label === 'Alerts' && (
+              <span style={{ marginLeft: 'auto', background: 'var(--danger)', color: '#fff', fontSize: '.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: 999 }}>3</span>
+            )}
+          </Link>
+        ))}
+
+        <div className="sidebar-section-label" style={{ marginTop: 12 }}>Config</div>
+        {NAV.slice(4).map(({ icon: Icon, label, path }) => (
+          <Link
+            key={path}
+            to={path}
+            onClick={() => setMobileOpen(false)}
+            className={`nav-link ${isActive(path) ? 'active' : ''}`}
+          >
+            <Icon className="nav-link-icon" />
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="sidebar-footer">
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">R</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="sidebar-user-name truncate">Riss620</div>
+            <div className="sidebar-user-role">Admin</div>
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/')}
+          className="nav-link"
+          style={{ width: '100%', marginTop: 4, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
+        >
+          <LogOut className="nav-link-icon" />
+          Sign out
+        </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="app-shell">
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 40, backdropFilter: 'blur(3px)' }}
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Desktop Sidebar */}
+      <aside className="sidebar hide-mobile">
+        <SidebarInner />
+      </aside>
+
+      {/* Mobile Sidebar */}
+      <aside className={`sidebar`} style={{
+        position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
+        transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform .25s ease',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <SidebarInner />
+      </aside>
+
+      {/* Main */}
+      <main className="app-main">
+        {/* Topbar */}
+        <header className="topbar">
+          <div className="topbar-left">
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              style={{ display: 'none', padding: 6, borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-2)' }}
+              className="show-mobile"
+            >
+              {mobileOpen ? <X style={{ width: 20, height: 20 }} /> : <Menu style={{ width: 20, height: 20 }} />}
+            </button>
+
+            {/* Status pill */}
+            <div className="status-pill">
+              <div className="ping-ring" />
+              <span>System Active</span>
+            </div>
+
+            {/* Breadcrumb */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '.8125rem', color: 'var(--text-3)' }} className="hide-mobile">
+              <ChevronRight style={{ width: 13, height: 13 }} />
+              <span style={{ fontWeight: 500, color: 'var(--text-1)' }}>
+                {NAV.find(n => isActive(n.path))?.label || 'Dashboard'}
+              </span>
+            </div>
+          </div>
+
+          <div className="topbar-right">
+
+
+            {/* Bell */}
+            <div style={{ position: 'relative', cursor: 'pointer' }}>
+              <Bell style={{ width: 18, height: 18, color: 'var(--text-2)' }} />
+              <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, background: 'var(--danger)', borderRadius: '50%', border: '1.5px solid var(--cream)' }} />
+            </div>
+
+            {/* Avatar */}
+            <div className="topbar-avatar">R</div>
+          </div>
+        </header>
+
+        {/* Content */}
+        <div className="page-content">
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  );
+}

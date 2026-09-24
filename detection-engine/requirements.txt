@@ -1,0 +1,6 @@
+redis
+sqlalchemy
+psycopg2-binary
+tree-sitter
+tree-sitter-javascript
+requests
