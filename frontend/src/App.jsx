@@ -9,6 +9,20 @@ import Repositories from './features/repositories/Repositories';
 import Settings from './features/settings/Settings';
 import Alerts from './features/alerts/Alerts';
 
+// Global fetch override to auto-attach JWT token for multi-tenancy
+const originalFetch = window.fetch;
+window.fetch = async (url, config = {}) => {
+  if (typeof url === 'string' && url.startsWith('/api')) {
+    const token = localStorage.getItem('ls_token');
+    if (token) {
+      config.headers = {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`
+      };
+    }
+  }
+  return originalFetch(url, config);
+};
 export default function App() {
   return (
     <BrowserRouter>

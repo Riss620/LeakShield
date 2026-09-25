@@ -126,40 +126,41 @@ router.post('/github', async (req, res) => {
   const commitSha = commits[0]?.id || 'unknown';
   const pusherName = pusher?.name || 'unknown';
 
-  // Upsert repository
-  await run(
-    `INSERT INTO repositories (id, name, url, status) VALUES ($1, $2, $3, 'active') ON CONFLICT (id) DO UPDATE SET status = 'active'`,
-    [repoName, repoFullName, repository.html_url]
-  );
-
-  const scanId = crypto.randomUUID();
-  await run(`INSERT INTO scans (id, repository_id, commit_sha) VALUES ($1, $2, $3)`, [scanId, repoName, commitSha]);
+  const repos = await query('SELECT * FROM repositories WHERE name = $1', [repoFullName]);
   
+  if (!repos || repos.length === 0) {
+    return res.status(200).json({ message: 'Repository not monitored by any user, skipped.' });
+  }
+
   // Set GitHub status to pending immediately
   await setGitHubCommitStatus(repoOwner, repoName, commitSha, 'pending', 'LeakShield is scanning this commit...');
   
-  notifyClients(req.app, 'scan_started', { scanId, repository: repoFullName, commitSha, pusher: pusherName });
-
   // Fetch real files from GitHub API
   const filesToScan = await fetchCommitFiles(repoOwner, repoName, commitSha);
   console.log(`Queuing ${filesToScan.length} files from commit ${commitSha} for scanning`);
 
-  // Enqueue all files to Redis for Python worker
-  for (const file of filesToScan) {
-    await queueManager.enqueueScan({
-      scanId,
-      repositoryId: repoName,
-      repositoryOwner: repoOwner,
-      commitSha,
-      filePath: file.name,
-      content: file.content
-    });
+  // Enqueue all files to Redis for Python worker for EACH user's tracking repo
+  let scansCreated = 0;
+  for (const repo of repos) {
+    const scanId = crypto.randomUUID();
+    await run(`INSERT INTO scans (id, repository_id, commit_sha, status) VALUES ($1, $2, $3, 'QUEUED')`, [scanId, repo.id, commitSha]);
+    
+    notifyClients(req.app, 'scan_started', { scanId, repository: repoFullName, commitSha, pusher: pusherName });
+
+    for (const file of filesToScan) {
+      await queueManager.enqueueScan({
+        scanId,
+        repositoryId: repo.id, // the unique repoId for this user
+        repositoryOwner: repoOwner,
+        commitSha,
+        filePath: file.name,
+        content: file.content
+      });
+    }
+    scansCreated++;
   }
 
-  // Store scan metadata for status checking after results come in
-  await run(`UPDATE scans SET status = 'QUEUED' WHERE id = $1`, [scanId]);
-
-  res.status(202).json({ message: 'Scan queued', scanId, filesQueued: filesToScan.length });
+  res.status(202).json({ message: 'Scan queued', scansCreated, filesQueued: filesToScan.length });
 });
 
 // Called by Python worker via Redis PubSub to finalize scan status

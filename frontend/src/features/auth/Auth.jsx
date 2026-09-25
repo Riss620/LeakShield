@@ -41,11 +41,23 @@ export function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    // Set a dummy user for local login
-    localStorage.setItem('ls_user', JSON.stringify({ name: email.split('@')[0], email }));
-    setLoading(false);
-    navigate('/app');
+    try {
+      const res = await fetch('/auth/local/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+      
+      localStorage.setItem('ls_token', data.token);
+      localStorage.setItem('ls_user', JSON.stringify(data.user));
+      navigate('/app');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -92,11 +104,23 @@ export function Signup() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise(r => setTimeout(r, 900));
-    // Save the created user to localStorage
-    localStorage.setItem('ls_user', JSON.stringify({ name, email }));
-    setLoading(false);
-    navigate('/app');
+    try {
+      const res = await fetch('/auth/local/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Signup failed');
+      
+      localStorage.setItem('ls_token', data.token);
+      localStorage.setItem('ls_user', JSON.stringify(data.user));
+      navigate('/app');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const perks = ['Free forever plan', 'No credit card needed', 'Set up in 3 minutes'];

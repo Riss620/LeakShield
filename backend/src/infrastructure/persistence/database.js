@@ -16,12 +16,19 @@ async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS repositories (
       id TEXT PRIMARY KEY,
+      user_id TEXT,
       name TEXT NOT NULL,
       url TEXT NOT NULL,
       status TEXT DEFAULT 'ACTIVE',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    await pool.query(`ALTER TABLE repositories ADD COLUMN IF NOT EXISTS user_id TEXT`);
+  } catch (e) {
+    // Ignore if unsupported or already exists
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS scans (
@@ -54,6 +61,13 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(repository_id) REFERENCES repositories(id),
       FOREIGN KEY(scan_id) REFERENCES scans(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS settings (
+      user_id TEXT PRIMARY KEY,
+      config_json TEXT DEFAULT '{}'
     )
   `);
 }

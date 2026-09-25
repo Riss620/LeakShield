@@ -1,16 +1,34 @@
 const express = require('express');
 const { query, run } = require('../../infrastructure/persistence/database');
+const jwt = require('jsonwebtoken');
 
 const router = express.Router();
 
+const JWT_SECRET = () => process.env.JWT_SECRET || 'leakshield_jwt_secret';
+
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
+  try {
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET());
+    req.user = payload;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
+router.use(requireAuth);
+
 router.get('/dashboard', async (req, res) => {
   try {
-    const repoCount = (await query('SELECT COUNT(*) as c FROM repositories'))[0].c;
-    const criticalCount = (await query('SELECT COUNT(*) as c FROM findings WHERE severity = $1 AND status = $2', ['CRITICAL', 'OPEN']))[0].c;
-    const highCount = (await query('SELECT COUNT(*) as c FROM findings WHERE severity = $1 AND status = $2', ['HIGH', 'OPEN']))[0].c;
-    const openCount = (await query('SELECT COUNT(*) as c FROM findings WHERE status = $1', ['OPEN']))[0].c;
+    const userId = req.user.id;
+    const repoCount = (await query('SELECT COUNT(*) as c FROM repositories WHERE user_id = $1', [userId]))[0].c;
+    const criticalCount = (await query('SELECT COUNT(*) as c FROM findings WHERE severity = $1 AND status = $2 AND repository_id IN (SELECT id FROM repositories WHERE user_id = $3)', ['CRITICAL', 'OPEN', userId]))[0].c;
+    const highCount = (await query('SELECT COUNT(*) as c FROM findings WHERE severity = $1 AND status = $2 AND repository_id IN (SELECT id FROM repositories WHERE user_id = $3)', ['HIGH', 'OPEN', userId]))[0].c;
+    const openCount = (await query('SELECT COUNT(*) as c FROM findings WHERE status = $1 AND repository_id IN (SELECT id FROM repositories WHERE user_id = $2)', ['OPEN', userId]))[0].c;
     
-    const recentActivity = await query('SELECT * FROM findings ORDER BY created_at DESC LIMIT 5');
+    const recentActivity = await query('SELECT * FROM findings WHERE repository_id IN (SELECT id FROM repositories WHERE user_id = $1) ORDER BY created_at DESC LIMIT 5', [userId]);
 
     // Postgres returns count as string usually, ensure they are numbers
     const mappedActivity = recentActivity.map(act => ({
@@ -37,7 +55,8 @@ router.get('/dashboard', async (req, res) => {
 
 router.get('/findings', async (req, res) => {
   try {
-    const findings = await query('SELECT * FROM findings ORDER BY created_at DESC');
+    const userId = req.user.id;
+    const findings = await query('SELECT * FROM findings WHERE repository_id IN (SELECT id FROM repositories WHERE user_id = $1) ORDER BY created_at DESC', [userId]);
     const mapped = findings.map(f => ({
       id: f.id,
       repositoryId: f.repository_id,
@@ -56,14 +75,16 @@ router.get('/findings', async (req, res) => {
 
 router.get('/repositories', async (req, res) => {
   try {
+    const userId = req.user.id;
     const repos = await query(`
       SELECT 
         r.*,
         (SELECT COUNT(*) FROM findings WHERE repository_id = r.id AND severity = 'CRITICAL') as critical_count,
         (SELECT COUNT(*) FROM findings WHERE repository_id = r.id AND severity = 'HIGH') as high_count
       FROM repositories r 
+      WHERE r.user_id = $1
       ORDER BY r.created_at DESC
-    `);
+    `, [userId]);
     
     const formatted = repos.map(repo => ({
       ...repo,
@@ -91,7 +112,8 @@ router.post('/repositories', async (req, res) => {
 
     const owner = match[1];
     const repoName = match[2].replace(/\.git$/, '');
-    const repoId = repoName;
+    const userId = req.user.id;
+    const repoId = `${userId}-${owner}-${repoName}`;
     const fullName = `${owner}/${repoName}`;
     const cleanUrl = `https://github.com/${fullName}`;
 
@@ -118,9 +140,9 @@ router.post('/repositories', async (req, res) => {
 
     // Upsert into database
     await run(
-      `INSERT INTO repositories (id, name, url, status) VALUES ($1, $2, $3, 'active')
+      `INSERT INTO repositories (id, name, url, status, user_id) VALUES ($1, $2, $3, 'active', $4)
        ON CONFLICT (id) DO UPDATE SET url = EXCLUDED.url, status = 'active'`,
-      [repoId, fullName, finalUrl]
+      [repoId, fullName, finalUrl, userId]
     );
 
     const saved = (await query('SELECT * FROM repositories WHERE id = $1', [repoId]))[0];
@@ -139,7 +161,8 @@ router.post('/repositories', async (req, res) => {
 // DELETE /api/repositories/:id — Remove a repository
 router.delete('/repositories/:id', async (req, res) => {
   try {
-    await run('DELETE FROM repositories WHERE id = $1', [req.params.id]);
+    const userId = req.user.id;
+    await run('DELETE FROM repositories WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -148,7 +171,8 @@ router.delete('/repositories/:id', async (req, res) => {
 
 router.patch('/findings/:id/resolve', async (req, res) => {
   try {
-    await run('UPDATE findings SET status = $1 WHERE id = $2', ['RESOLVED', req.params.id]);
+    const userId = req.user.id;
+    await run('UPDATE findings SET status = $1 WHERE id = $2 AND repository_id IN (SELECT id FROM repositories WHERE user_id = $3)', ['RESOLVED', req.params.id, userId]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -157,7 +181,8 @@ router.patch('/findings/:id/resolve', async (req, res) => {
 
 router.post('/findings/:id/remediate', async (req, res) => {
   try {
-    const finding = (await query('SELECT * FROM findings WHERE id = $1', [req.params.id]))[0];
+    const userId = req.user.id;
+    const finding = (await query('SELECT * FROM findings WHERE id = $1 AND repository_id IN (SELECT id FROM repositories WHERE user_id = $2)', [req.params.id, userId]))[0];
     if (!finding) return res.status(404).json({ error: 'Finding not found' });
     
     const prompt = `You are a security expert. A ${finding.secret_type} was leaked in ${finding.file_path}.

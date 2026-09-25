@@ -178,4 +178,34 @@ router.get('/me', (req, res) => {
   }
 });
 
+/* ── Local Auth ──────────────────────────────────────────── */
+router.post('/local/signup', (req, res) => {
+  const { name, email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  // In a real app, hash password and store in DB. Here we just mock it.
+  const user = {
+    id: `local_${Buffer.from(email).toString('base64').slice(0, 10)}`,
+    name: name || email.split('@')[0],
+    email: email,
+    avatar: null,
+    provider: 'local'
+  };
+  const token = makeToken(user);
+  res.json({ token, user });
+});
+
+router.post('/local/login', (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  const user = {
+    id: `local_${Buffer.from(email).toString('base64').slice(0, 10)}`,
+    name: email.split('@')[0],
+    email: email,
+    avatar: null,
+    provider: 'local'
+  };
+  const token = makeToken(user);
+  res.json({ token, user });
+});
+
 module.exports = router;
