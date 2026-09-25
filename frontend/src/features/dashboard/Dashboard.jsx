@@ -41,7 +41,11 @@ export default function Dashboard() {
       .catch(() => setLoading(false));
 
     const token = localStorage.getItem('ls_token');
-    const es = new EventSource(token ? `/api/events?token=${token}` : '/api/events');
+    const backendUrl = window.location.hostname.includes('vercel.app') 
+      ? 'https://leakshield-pkgi.onrender.com' 
+      : '';
+    const esUrl = token ? `${backendUrl}/api/events?token=${token}` : `${backendUrl}/api/events`;
+    const es = new EventSource(esUrl);
     es.addEventListener('finding_detected', (e) => {
       const f = JSON.parse(e.data);
       setStats(prev => ({
