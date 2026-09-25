@@ -29,8 +29,15 @@ if REDIS_URL.startswith('rediss://'):
 else:
     r = redis.from_url(REDIS_URL, decode_responses=True)
 
-print(f"Connecting to Postgres at {DATABASE_URL[:30]}...")
-engine = create_engine(DATABASE_URL)
+# Fix dialect for SQLAlchemy with psycopg3
+db_url = DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+psycopg://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+print(f"Connecting to Postgres at {db_url[:30]}...")
+engine = create_engine(db_url)
 
 # Initialize Tree-sitter
 JS_LANGUAGE = Language(tsjavascript.language())
