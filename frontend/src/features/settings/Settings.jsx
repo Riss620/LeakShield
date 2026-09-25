@@ -74,9 +74,15 @@ export default function Settings() {
   const save = async () => {
     setSaving(true); setMsg('');
     try {
+      const payload = { webhookSecret };
+      if (githubToken) payload.githubToken = githubToken;
+      if (slackWebhook) payload.slackWebhook = slackWebhook;
+      if (geminiKey) payload.geminiKey = geminiKey;
+      if (groqKey) payload.groqKey = groqKey;
+
       const res = await fetch('/api/settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ githubToken, webhookSecret, slackWebhook, geminiKey, groqKey })
+        body: JSON.stringify(payload)
       });
       const d = await res.json();
       setMsg(res.ok ? '✓ ' + d.message : '✗ ' + (d.error || 'Save failed'));
