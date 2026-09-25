@@ -18,6 +18,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [criticalAlerts, setCriticalAlerts] = useState(0);
 
   useEffect(() => {
     try {
@@ -28,6 +29,17 @@ export default function Layout() {
     } catch (e) {
       // ignore
     }
+    
+    // Fetch real-time critical findings count
+    fetch('/api/findings')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const count = data.filter(f => f.severity === 'CRITICAL' && f.status === 'OPEN').length;
+          setCriticalAlerts(count);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   const isActive = (path) => {
@@ -57,8 +69,8 @@ export default function Layout() {
           >
             <Icon className="nav-link-icon" />
             {label}
-            {label === 'Alerts' && (
-              <span style={{ marginLeft: 'auto', background: 'var(--danger)', color: '#fff', fontSize: '.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: 999 }}>3</span>
+            {label === 'Alerts' && criticalAlerts > 0 && (
+              <span style={{ marginLeft: 'auto', background: 'var(--danger)', color: '#fff', fontSize: '.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: 999 }}>{criticalAlerts}</span>
             )}
           </Link>
         ))}
@@ -166,7 +178,7 @@ export default function Layout() {
             {/* Bell */}
             <div style={{ position: 'relative', cursor: 'pointer' }}>
               <Bell style={{ width: 18, height: 18, color: 'var(--text-2)' }} />
-              <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, background: 'var(--danger)', borderRadius: '50%', border: '1.5px solid var(--cream)' }} />
+              {criticalAlerts > 0 && <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, background: 'var(--danger)', borderRadius: '50%', border: '1.5px solid var(--cream)' }} />}
             </div>
 
             {/* Avatar */}
