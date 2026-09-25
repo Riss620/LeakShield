@@ -26,6 +26,10 @@ export default function Layout() {
       if (stored) {
         setUser(JSON.parse(stored));
       }
+    } catch (e) {
+      // ignore parse errors
+    }
+
     // Fetch real-time critical findings count on load
     fetch('/api/findings')
       .then(res => res.json())
