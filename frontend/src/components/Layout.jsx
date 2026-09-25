@@ -91,7 +91,11 @@ export default function Layout() {
           </div>
         </div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            localStorage.removeItem('ls_user');
+            localStorage.removeItem('ls_token');
+            navigate('/');
+          }}
           className="nav-link"
           style={{ width: '100%', marginTop: 4, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
         >

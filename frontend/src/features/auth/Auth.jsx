@@ -42,6 +42,8 @@ export function Login() {
     e.preventDefault();
     setLoading(true);
     await new Promise(r => setTimeout(r, 800));
+    // Set a dummy user for local login
+    localStorage.setItem('ls_user', JSON.stringify({ name: email.split('@')[0], email }));
     setLoading(false);
     navigate('/app');
   };
@@ -91,6 +93,8 @@ export function Signup() {
     e.preventDefault();
     setLoading(true);
     await new Promise(r => setTimeout(r, 900));
+    // Save the created user to localStorage
+    localStorage.setItem('ls_user', JSON.stringify({ name, email }));
     setLoading(false);
     navigate('/app');
   };
