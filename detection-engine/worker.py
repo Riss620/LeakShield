@@ -11,6 +11,11 @@ import tree_sitter_javascript as tsjavascript
 
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://leakshield:leakshield_password@localhost:5432/leakshield_db')
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:4000')
 
 import threading
