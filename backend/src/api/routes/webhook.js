@@ -6,8 +6,13 @@ const notificationService = require('../../application/services/NotificationServ
 
 const router = express.Router();
 const GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || 'secret';
-// Read token dynamically so Settings page changes take effect immediately
-const getGithubToken = () => process.env.GITHUB_TOKEN || '';
+
+const getGithubToken = async (userId) => {
+  const row = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+  if (!row) return '';
+  const config = JSON.parse(row.config_json || '{}');
+  return config.GITHUB_TOKEN || '';
+};
 
 const notifyClients = (app, event, data) => {
   app.emit('sse_broadcast', { event, data });
@@ -16,10 +21,11 @@ const notifyClients = (app, event, data) => {
 /**
  * Fetch actual changed files and their content from GitHub API for a given commit.
  */
-async function fetchCommitFiles(owner, repo, sha) {
-  if (!getGithubToken()) {
+async function fetchCommitFiles(owner, repo, sha, userId) {
+  const token = await getGithubToken(userId);
+  if (!token) {
     // Fallback to demo files if no token is configured
-    console.warn('No GITHUB_TOKEN set — using demo files for scanning.');
+    console.warn('No GITHUB_TOKEN set for user — using demo files for scanning.');
     return [
       { name: 'config/aws.js', content: 'const awsKey = "AKIAIOSFODNN7EXAMPLE";\nconst secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";' },
       { name: 'src/database.js', content: 'const dbUrl = "postgres://admin:SuperSecret123@prod-db.company.com:5432/users";\nmodule.exports = { dbUrl };' },
@@ -30,7 +36,7 @@ async function fetchCommitFiles(owner, repo, sha) {
   try {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`, {
       headers: {
-        'Authorization': `Bearer ${getGithubToken()}`,
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'LeakShield-Scanner'
       }
@@ -52,7 +58,7 @@ async function fetchCommitFiles(owner, repo, sha) {
           try {
             const rawRes = await fetch(file.raw_url, {
               headers: {
-                'Authorization': `Bearer ${getGithubToken()}`,
+                'Authorization': `Bearer ${token}`,
                 'User-Agent': 'LeakShield-Scanner'
               }
             });
@@ -74,13 +80,14 @@ async function fetchCommitFiles(owner, repo, sha) {
 /**
  * Set a GitHub commit status (pending/success/failure) to block dangerous commits.
  */
-async function setGitHubCommitStatus(owner, repo, sha, state, description) {
-  if (!getGithubToken()) return;
+async function setGitHubCommitStatus(owner, repo, sha, state, description, userId) {
+  const token = await getGithubToken(userId);
+  if (!token) return;
   try {
     await fetch(`https://api.github.com/repos/${owner}/${repo}/statuses/${sha}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${getGithubToken()}`,
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json',
         'User-Agent': 'LeakShield-Scanner'
@@ -132,21 +139,20 @@ router.post('/github', async (req, res) => {
     return res.status(200).json({ message: 'Repository not monitored by any user, skipped.' });
   }
 
-  // Set GitHub status to pending immediately
-  await setGitHubCommitStatus(repoOwner, repoName, commitSha, 'pending', 'LeakShield is scanning this commit...');
-  
-  // Fetch real files from GitHub API
-  const filesToScan = await fetchCommitFiles(repoOwner, repoName, commitSha);
-  console.log(`Queuing ${filesToScan.length} files from commit ${commitSha} for scanning`);
-
   // Enqueue all files to Redis for Python worker for EACH user's tracking repo
   let scansCreated = 0;
   for (const repo of repos) {
     const scanId = crypto.randomUUID();
     await run(`INSERT INTO scans (id, repository_id, commit_sha, status) VALUES ($1, $2, $3, 'QUEUED')`, [scanId, repo.id, commitSha]);
     
+    // Set GitHub status to pending using this user's token
+    await setGitHubCommitStatus(repoOwner, repoName, commitSha, 'pending', 'LeakShield is scanning this commit...', repo.user_id);
+
     notifyClients(req.app, 'scan_started', { scanId, repository: repoFullName, commitSha, pusher: pusherName });
 
+    // Fetch real files from GitHub API using this user's token
+    const filesToScan = await fetchCommitFiles(repoOwner, repoName, commitSha, repo.user_id);
+    
     for (const file of filesToScan) {
       await queueManager.enqueueScan({
         scanId,
@@ -160,7 +166,7 @@ router.post('/github', async (req, res) => {
     scansCreated++;
   }
 
-  res.status(202).json({ message: 'Scan queued', scansCreated, filesQueued: filesToScan.length });
+  res.status(202).json({ message: 'Scan queued', scansCreated });
 });
 
 // Called by Python worker via Redis PubSub to finalize scan status
@@ -170,16 +176,23 @@ router.post('/scan-complete', async (req, res) => {
   
   await run(`UPDATE scans SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP WHERE id = $1`, [scanId]);
 
-  // Set GitHub commit status based on findings severity
-  if (criticalCount > 0) {
-    await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'failure',
-      `🚨 ${criticalCount} CRITICAL secret(s) detected! Review immediately.`);
-    await notificationService.sendSlackAlert({ scanId, repositoryName, commitSha, findingsCount, criticalCount });
-  } else if (findingsCount > 0) {
-    await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'success',
-      `⚠️ ${findingsCount} low-risk finding(s). Review recommended.`);
-  } else {
-    await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'success', '✅ No secrets detected. Clean commit!');
+  // Find the repo and user to get the correct token
+  const scan = (await query('SELECT repository_id FROM scans WHERE id = $1', [scanId]))[0];
+  if (scan) {
+    const repo = (await query('SELECT user_id FROM repositories WHERE id = $1', [scan.repository_id]))[0];
+    if (repo && repo.user_id) {
+      // Set GitHub commit status based on findings severity
+      if (criticalCount > 0) {
+        await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'failure',
+          `🚨 ${criticalCount} CRITICAL secret(s) detected! Review immediately.`, repo.user_id);
+        await notificationService.sendSlackAlert({ scanId, repositoryName, commitSha, findingsCount, criticalCount });
+      } else if (findingsCount > 0) {
+        await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'success',
+          `⚠️ ${findingsCount} low-risk finding(s). Review recommended.`, repo.user_id);
+      } else {
+        await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'success', '✅ No secrets detected. Clean commit!', repo.user_id);
+      }
+    }
   }
 
   res.json({ ok: true });

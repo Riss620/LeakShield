@@ -194,14 +194,17 @@ Provide a concise, 2-3 sentence explanation of how to remediate this securely (e
 
     let suggestion = '';
     
-    if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+    const configRow = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+    const config = configRow ? JSON.parse(configRow.config_json || '{}') : {};
+    
+    if (!config.GEMINI_API_KEY && !config.GROQ_API_KEY) {
       return res.status(503).json({ error: 'No AI API keys configured. Go to Settings → API Keys to add your Gemini or Groq key.' });
     }
     
     try {
-      if (!process.env.GEMINI_API_KEY) throw new Error('Gemini key not set');
+      if (!config.GEMINI_API_KEY) throw new Error('Gemini key not set');
       // Try Gemini (AI Studio)
-      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${config.GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,7 +223,7 @@ Provide a concise, 2-3 sentence explanation of how to remediate this securely (e
       const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+          'Authorization': `Bearer ${config.GROQ_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

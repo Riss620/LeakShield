@@ -1,58 +1,32 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const { query, run } = require('../../infrastructure/persistence/database');
+const jwt = require('jsonwebtoken');
+
 const router = express.Router();
 
-const ENV_PATH = path.join(__dirname, '../../../../.env');
+const JWT_SECRET = () => process.env.JWT_SECRET || 'leakshield_jwt_secret';
 
-function parseEnv(content) {
-  const vars = {};
-  content.split('\n').forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return;
-    const idx = trimmed.indexOf('=');
-    if (idx === -1) return;
-    const key = trimmed.slice(0, idx).trim();
-    const val = trimmed.slice(idx + 1).trim();
-    vars[key] = val;
-  });
-  return vars;
-}
-
-function writeEnv(vars) {
-  const lines = [];
-  // Preserve comments/sections from original file
-  const original = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
-  const originalLines = original.split('\n');
-
-  for (const line of originalLines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) {
-      lines.push(line);
-      continue;
-    }
-    const idx = trimmed.indexOf('=');
-    if (idx === -1) { lines.push(line); continue; }
-    const key = trimmed.slice(0, idx).trim();
-    if (key in vars) {
-      lines.push(`${key}=${vars[key]}`);
-      delete vars[key];
-    } else {
-      lines.push(line);
-    }
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
+  try {
+    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET());
+    req.user = payload;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
-  // Append any new vars not in original
-  for (const [key, val] of Object.entries(vars)) {
-    lines.push(`${key}=${val}`);
-  }
-  fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf8');
-}
+};
+
+router.use(requireAuth);
 
 // GET current settings (masked)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
-    const vars = parseEnv(content);
+    const userId = req.user.id;
+    const settingsRow = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+    const vars = settingsRow ? JSON.parse(settingsRow.config_json) : {};
+    
     res.json({
       githubToken: vars.GITHUB_TOKEN ? '••••••••' + vars.GITHUB_TOKEN.slice(-4) : '',
       githubTokenSet: !!vars.GITHUB_TOKEN,
@@ -68,24 +42,28 @@ router.get('/', (req, res) => {
 });
 
 // POST update settings
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
+    const userId = req.user.id;
     const { githubToken, webhookSecret, slackWebhook, geminiKey, groqKey } = req.body;
-    const updates = {};
-    if (githubToken !== undefined && !githubToken.startsWith('••')) updates.GITHUB_TOKEN = githubToken;
-    if (webhookSecret !== undefined) updates.GITHUB_WEBHOOK_SECRET = webhookSecret;
-    if (slackWebhook !== undefined && !slackWebhook.startsWith('••')) updates.SLACK_WEBHOOK_URL = slackWebhook;
-    if (geminiKey !== undefined && !geminiKey.startsWith('••')) updates.GEMINI_API_KEY = geminiKey;
-    if (groqKey !== undefined && !groqKey.startsWith('••')) updates.GROQ_API_KEY = groqKey;
+    
+    // Fetch existing
+    const settingsRow = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+    const vars = settingsRow ? JSON.parse(settingsRow.config_json) : {};
 
-    writeEnv(updates);
+    if (githubToken !== undefined && !githubToken.startsWith('••')) vars.GITHUB_TOKEN = githubToken;
+    if (webhookSecret !== undefined) vars.GITHUB_WEBHOOK_SECRET = webhookSecret;
+    if (slackWebhook !== undefined && !slackWebhook.startsWith('••')) vars.SLACK_WEBHOOK_URL = slackWebhook;
+    if (geminiKey !== undefined && !geminiKey.startsWith('••')) vars.GEMINI_API_KEY = geminiKey;
+    if (groqKey !== undefined && !groqKey.startsWith('••')) vars.GROQ_API_KEY = groqKey;
 
-    // Reload env vars in-process immediately
-    for (const [key, val] of Object.entries(updates)) {
-      process.env[key] = val;
-    }
+    await run(
+      `INSERT INTO settings (user_id, config_json) VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE SET config_json = EXCLUDED.config_json`,
+      [userId, JSON.stringify(vars)]
+    );
 
-    res.json({ success: true, message: 'Settings saved and applied immediately.' });
+    res.json({ success: true, message: 'Settings saved.' });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
