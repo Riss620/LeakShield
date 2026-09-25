@@ -142,13 +142,10 @@ export default function Settings() {
                 <h4 style={{ fontWeight: 600, fontSize: '.875rem', marginBottom: 10 }}>⚙ How to Set Up GitHub Webhook</h4>
                 <ol style={{ paddingLeft: 18, fontSize: '.8125rem', color: 'var(--text-2)', lineHeight: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <li>Go to your GitHub repo → <strong>Settings → Webhooks → Add webhook</strong></li>
-                  <li>Set <strong>Payload URL</strong> to your tunnel URL + <code style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 5px', borderRadius: 4 }}>/api/webhooks/github</code></li>
+                  <li>Set <strong>Payload URL</strong> to <code style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 5px', borderRadius: 4 }}>{window.location.origin}/api/webhooks/github</code></li>
                   <li>Set <strong>Content type</strong> to <code style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 5px', borderRadius: 4 }}>application/json</code></li>
                   <li>Enter the <strong>Webhook Secret</strong> from above, select <em>Just push events</em></li>
                 </ol>
-                <p style={{ fontSize: '.75rem', color: 'var(--text-3)', marginTop: 8 }}>
-                  Run <code>ngrok http 4000</code> to expose port 4000 publicly.
-                </p>
               </div>
 
               {/* Status cards */}

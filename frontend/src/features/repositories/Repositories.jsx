@@ -163,7 +163,7 @@ export default function Repositories() {
 
               <div style={{ background: 'var(--cream)', borderRadius: 10, padding: '12px 14px', fontSize: '.8rem', color: 'var(--text-2)', lineHeight: 1.6 }}>
                 <strong>Next:</strong> After connecting, add a GitHub webhook:<br />
-                Payload URL: <code style={{ color: 'var(--accent)', background: 'var(--accent-soft)', padding: '1px 5px', borderRadius: 4 }}>https://your-tunnel.ngrok.io/api/webhooks/github</code>
+                Payload URL: <code style={{ color: 'var(--accent)', background: 'var(--accent-soft)', padding: '1px 5px', borderRadius: 4 }}>{window.location.origin}/api/webhooks/github</code>
               </div>
 
               <div className="modal-footer">
