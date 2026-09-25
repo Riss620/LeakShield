@@ -40,17 +40,10 @@ export default function Repositories() {
 
   const handleScan = async (repo) => {
     try {
-      const latestRes = await fetch(`https://api.github.com/repos/${repo.fullName}/commits?per_page=1`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('gh_token') || ''}`, 'User-Agent': 'LeakShield' } });
-      const commits = await latestRes.json();
-      if (!commits[0]) { alert('No commits found in this repository.'); return; }
-      const sha = commits[0].sha;
-      const [owner, name] = repo.fullName.split('/');
-      await fetch('/api/webhooks/github', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-github-event': 'push', 'x-github-delivery': `manual-${Date.now()}` },
-        body: JSON.stringify({ repository: { name, full_name: repo.fullName, html_url: repo.url, owner: { login: owner } }, pusher: { name: owner }, commits: [{ id: sha, message: 'Manual scan', author: { name: owner } }] })
-      });
-      alert(`✅ Scan triggered for ${repo.fullName}. Check Findings in a moment.`);
+      const res = await fetch(`/api/repositories/${repo.id}/scan`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Scan failed');
+      alert(`✅ Scan triggered for ${repo.name}. Check Findings in a moment.`);
     } catch (e) { alert('Scan failed: ' + e.message); }
   };
 

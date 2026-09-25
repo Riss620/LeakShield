@@ -177,6 +177,71 @@ router.delete('/repositories/:id', async (req, res) => {
   }
 });
 
+// POST /api/repositories/:id/scan — Manually trigger scan using user's stored GitHub token
+router.post('/repositories/:id/scan', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const repo = (await query('SELECT * FROM repositories WHERE id = $1 AND user_id = $2', [req.params.id, userId]))[0];
+    if (!repo) return res.status(404).json({ error: 'Repository not found' });
+
+    // Get user's GitHub token from DB
+    const configRow = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+    const config = configRow ? JSON.parse(configRow.config_json || '{}') : {};
+    const githubToken = config.GITHUB_TOKEN || '';
+
+    // Parse owner/name from stored repo name (e.g. "Riss620/LeakShield")
+    const [owner, repoName] = repo.name.split('/');
+    if (!owner || !repoName) return res.status(400).json({ error: 'Invalid repository name format' });
+
+    // Fetch latest commit using the user's token
+    const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/commits?per_page=1`, {
+      headers: {
+        ...(githubToken ? { 'Authorization': `Bearer ${githubToken}` } : {}),
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'LeakShield-Scanner'
+      }
+    });
+
+    if (!ghRes.ok) {
+      const errBody = await ghRes.json().catch(() => ({}));
+      return res.status(400).json({ error: errBody.message || `GitHub API error: ${ghRes.status}` });
+    }
+
+    const commits = await ghRes.json();
+    if (!Array.isArray(commits) || commits.length === 0) {
+      return res.status(400).json({ error: 'No commits found in this repository.' });
+    }
+
+    const sha = commits[0].sha;
+
+    // Forward as a fake push event to the webhook handler logic
+    const webhookPayload = {
+      repository: { name: repoName, full_name: repo.name, html_url: repo.url, owner: { login: owner } },
+      pusher: { name: owner },
+      commits: [{ id: sha, message: 'Manual scan', author: { name: owner } }]
+    };
+
+    // Directly call the internal webhook URL
+    const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4000}`;
+    const webhookRes = await fetch(`${backendUrl}/api/webhooks/github`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-github-event': 'push',
+        'x-github-delivery': `manual-${Date.now()}`
+      },
+      body: JSON.stringify(webhookPayload)
+    });
+
+    const webhookData = await webhookRes.json();
+    res.json({ message: `Scan triggered for ${repo.name} at commit ${sha.slice(0, 8)}`, ...webhookData });
+  } catch (error) {
+    console.error('Manual scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 router.patch('/findings/:id/resolve', async (req, res) => {
   try {
     const userId = req.user.id;
