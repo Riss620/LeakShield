@@ -5,12 +5,14 @@ const queueManager = require('../../application/services/QueueManager');
 const notificationService = require('../../application/services/NotificationService');
 
 const router = express.Router();
-const GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || 'secret';
+
+const getUserConfig = async (userId) => {
+  const row = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+  return row ? JSON.parse(row.config_json || '{}') : {};
+};
 
 const getGithubToken = async (userId) => {
-  const row = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
-  if (!row) return '';
-  const config = JSON.parse(row.config_json || '{}');
+  const config = await getUserConfig(userId);
   return config.GITHUB_TOKEN || '';
 };
 
@@ -83,6 +85,7 @@ async function fetchCommitFiles(owner, repo, sha, userId) {
 async function setGitHubCommitStatus(owner, repo, sha, state, description, userId) {
   const token = await getGithubToken(userId);
   if (!token) return;
+  const appUrl = process.env.APP_URL || `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` || 'https://leakshield.onrender.com';
   try {
     await fetch(`https://api.github.com/repos/${owner}/${repo}/statuses/${sha}`, {
       method: 'POST',
@@ -96,7 +99,7 @@ async function setGitHubCommitStatus(owner, repo, sha, state, description, userI
         state,
         description,
         context: 'LeakShield Security Scan',
-        target_url: `http://localhost:5173/findings`
+        target_url: `${appUrl}/app/findings`
       })
     });
     console.log(`GitHub commit status set to ${state} for ${sha}`);
@@ -108,16 +111,7 @@ async function setGitHubCommitStatus(owner, repo, sha, state, description, userI
 router.post('/github', async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
   const event = req.headers['x-github-event'];
-  
-  // Verify webhook signature
-  if (signature) {
-    const hmac = crypto.createHmac('sha256', GITHUB_WEBHOOK_SECRET);
-    const digest = 'sha256=' + hmac.update(JSON.stringify(req.body)).digest('hex');
-    if (signature !== digest) {
-      return res.status(401).json({ error: 'Invalid webhook signature' });
-    }
-  }
-  
+
   if (event !== 'push') {
     return res.status(200).json({ message: `Event '${event}' acknowledged but not scanned` });
   }
@@ -134,9 +128,22 @@ router.post('/github', async (req, res) => {
   const pusherName = pusher?.name || 'unknown';
 
   const repos = await query('SELECT * FROM repositories WHERE name = $1', [repoFullName]);
-  
+
   if (!repos || repos.length === 0) {
     return res.status(200).json({ message: 'Repository not monitored by any user, skipped.' });
+  }
+
+  // Verify webhook signature using the FIRST matching user's secret (they share the same repo)
+  // The signature is the same for all users tracking this repo since GitHub sends one payload
+  if (signature) {
+    const firstRepo = repos[0];
+    const userConfig = await getUserConfig(firstRepo.user_id);
+    const secret = userConfig.GITHUB_WEBHOOK_SECRET || process.env.GITHUB_WEBHOOK_SECRET || 'secret';
+    const hmac = crypto.createHmac('sha256', secret);
+    const digest = 'sha256=' + hmac.update(JSON.stringify(req.body)).digest('hex');
+    if (signature !== digest) {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
   }
 
   // Enqueue all files to Redis for Python worker for EACH user's tracking repo
@@ -185,7 +192,7 @@ router.post('/scan-complete', async (req, res) => {
       if (criticalCount > 0) {
         await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'failure',
           `🚨 ${criticalCount} CRITICAL secret(s) detected! Review immediately.`, repo.user_id);
-        await notificationService.sendSlackAlert({ scanId, repositoryName, commitSha, findingsCount, criticalCount });
+        await notificationService.sendSlackAlert({ scanId, repositoryName, commitSha, findingsCount, criticalCount, userId: repo.user_id });
       } else if (findingsCount > 0) {
         await setGitHubCommitStatus(repositoryOwner, repositoryName, commitSha, 'success',
           `⚠️ ${findingsCount} low-risk finding(s). Review recommended.`, repo.user_id);

@@ -123,8 +123,10 @@ router.post('/repositories', async (req, res) => {
     const fullName = `${owner}/${repoName}`;
     const cleanUrl = `https://github.com/${fullName}`;
 
-    // Validate repo exists via GitHub API (optional - works without token too for public repos)
-    const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+    // Validate repo exists via GitHub API using this user's saved token
+    const userConfigRow = (await query('SELECT config_json FROM settings WHERE user_id = $1', [userId]))[0];
+    const userConfig = userConfigRow ? JSON.parse(userConfigRow.config_json || '{}') : {};
+    const GITHUB_TOKEN = userConfig.GITHUB_TOKEN || process.env.GITHUB_TOKEN || '';
     let repoData = null;
     try {
       const ghRes = await fetch(`https://api.github.com/repos/${fullName}`, {

@@ -2,6 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 
 const webhookRoutes = require('./api/routes/webhook');
 const apiRoutes = require('./api/routes/api');
@@ -55,11 +56,28 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const userId = req.user?.id;
+  // Authenticate via ?token= query param (browsers can't set headers on EventSource)
+  let userId = null;
+  const token = req.query.token;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET || 'leakshield_jwt_secret');
+      userId = payload.id;
+    } catch (e) {
+      // Invalid token — still subscribe but won't get user-specific events
+    }
+  }
+
   const clientObj = { res, userId };
   clients.push(clientObj);
 
+  // Send a heartbeat every 30s to keep the connection alive through proxies
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 30000);
+
   req.on('close', () => {
+    clearInterval(heartbeat);
     clients = clients.filter(client => client !== clientObj);
   });
 });
