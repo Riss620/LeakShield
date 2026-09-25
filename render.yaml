@@ -8,13 +8,7 @@ databases:
     plan: free
 
 services:
-  # 1. Redis Cache & Queue
-  - type: redis
-    name: leakshield-redis
-    ipAllowList: [] # internal only
-    plan: free
-
-  # 2. Node.js Backend (Web Service)
+  # 1. Node.js Backend (Web Service)
   - type: web
     name: leakshield-backend
     env: node
@@ -25,18 +19,27 @@ services:
         value: production
       - key: PORT
         value: 10000
+      # Redis — Set in Render Dashboard from Upstash connection string
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: leakshield-redis
-          property: connectionString
+        sync: false
+      # Postgres
       - key: DATABASE_URL
         fromDatabase:
           name: leakshield-db
           property: connectionString
+      # Frontend URL (Vercel)
       - key: FRONTEND_URL
         value: "https://leak-shield-one.vercel.app"
-      # Required API Keys (Set these securely in the Render Dashboard)
+      # Backend URL (this service — used for OAuth redirect_uri)
+      - key: BACKEND_URL
+        sync: false   # Set this to your Render backend URL e.g. https://leakshield-backend.onrender.com
+      # App URL for Slack/GitHub status links
+      - key: APP_URL
+        value: "https://leak-shield-one.vercel.app"
+      # JWT — auto-generated
+      - key: JWT_SECRET
+        generateValue: true
+      # OAuth (Set these in Render Dashboard)
       - key: GITHUB_CLIENT_ID
         sync: false
       - key: GITHUB_CLIENT_SECRET
@@ -45,18 +48,24 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: JWT_SECRET
-        generateValue: true
 
-  # 3. Python Detection Engine (Background Worker modified as Web Service)
+  # 2. Python Detection Engine (Background Worker as Web Service)
   - type: web
     name: leakshield-worker
     env: python
     buildCommand: cd detection-engine && pip install -r requirements.txt
     startCommand: cd detection-engine && python worker.py
     envVars:
+      # Redis — Set in Render Dashboard from Upstash connection string
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: leakshield-redis
+        sync: false
+      # Postgres — needed to store findings
+      - key: DATABASE_URL
+        fromDatabase:
+          name: leakshield-db
           property: connectionString
+      # Backend URL — for calling /api/webhooks/scan-complete
+      - key: BACKEND_URL
+        sync: false   # Set this to your Render backend URL
+      - key: PORT
+        value: 10001

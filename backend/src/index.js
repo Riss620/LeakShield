@@ -13,7 +13,8 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 const Redis = require('ioredis');
-const redisSub = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
+const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const redisSub = new Redis(redisUrl, redisUrl.startsWith('rediss://') ? { tls: { rejectUnauthorized: false } } : {});
 
 const { query } = require('./infrastructure/persistence/database');
 

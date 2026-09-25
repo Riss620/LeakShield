@@ -9,6 +9,7 @@ const router = express.Router();
 
 const JWT_SECRET    = () => process.env.JWT_SECRET    || 'leakshield_jwt_secret';
 const FRONTEND_URL  = () => process.env.FRONTEND_URL  || 'http://localhost:5173';
+const BACKEND_URL   = () => process.env.BACKEND_URL   || process.env.RENDER_EXTERNAL_URL || 'http://localhost:4000';
 
 /* ── helpers ─────────────────────────────────────────────── */
 function makeToken(user) {
@@ -38,7 +39,7 @@ router.get('/github', (req, res) => {
   }
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: `http://localhost:4000/auth/github/callback`,
+    redirect_uri: `${BACKEND_URL()}/auth/github/callback`,
     scope: 'user:email read:user',
     state: Math.random().toString(36).slice(2),
   });
@@ -61,7 +62,7 @@ router.get('/github/callback', async (req, res) => {
         client_id:     process.env.GITHUB_CLIENT_ID,
         client_secret: process.env.GITHUB_CLIENT_SECRET,
         code,
-        redirect_uri: 'http://localhost:4000/auth/github/callback',
+        redirect_uri: `${BACKEND_URL()}/auth/github/callback`,
       }),
     });
     const tokenData = await tokenRes.json();
@@ -112,7 +113,7 @@ router.get('/google', (req, res) => {
   }
   const params = new URLSearchParams({
     client_id:     clientId,
-    redirect_uri:  'http://localhost:4000/auth/google/callback',
+    redirect_uri:  `${BACKEND_URL()}/auth/google/callback`,
     response_type: 'code',
     scope:         'openid email profile',
     access_type:   'online',
@@ -137,7 +138,7 @@ router.get('/google/callback', async (req, res) => {
         code,
         client_id:     process.env.GOOGLE_CLIENT_ID,
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri:  'http://localhost:4000/auth/google/callback',
+        redirect_uri:  `${BACKEND_URL()}/auth/google/callback`,
         grant_type:    'authorization_code',
       }),
     });

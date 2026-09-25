@@ -20,12 +20,16 @@ app = Flask(__name__)
 
 @app.route('/')
 def health_check():
-    return "Python Worker is running as a dummy web service!", 200
+    return "Python Worker is running!", 200
 
 print(f"Connecting to Redis at {REDIS_URL}")
-r = redis.from_url(REDIS_URL, decode_responses=True)
+# Upstash uses rediss:// (TLS) — pass ssl_cert_reqs=None to avoid cert verification issues
+if REDIS_URL.startswith('rediss://'):
+    r = redis.from_url(REDIS_URL, decode_responses=True, ssl_cert_reqs=None)
+else:
+    r = redis.from_url(REDIS_URL, decode_responses=True)
 
-print(f"Connecting to Postgres at {DATABASE_URL}")
+print(f"Connecting to Postgres at {DATABASE_URL[:30]}...")
 engine = create_engine(DATABASE_URL)
 
 # Initialize Tree-sitter
