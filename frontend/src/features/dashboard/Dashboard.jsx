@@ -40,7 +40,8 @@ export default function Dashboard() {
       .then(d => { setStats(d); setLoading(false); })
       .catch(() => setLoading(false));
 
-    const es = new EventSource('/api/events');
+    const token = localStorage.getItem('ls_token');
+    const es = new EventSource(token ? `/api/events?token=${token}` : '/api/events');
     es.addEventListener('finding_detected', (e) => {
       const f = JSON.parse(e.data);
       setStats(prev => ({

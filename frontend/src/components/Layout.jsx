@@ -26,11 +26,7 @@ export default function Layout() {
       if (stored) {
         setUser(JSON.parse(stored));
       }
-    } catch (e) {
-      // ignore
-    }
-    
-    // Fetch real-time critical findings count
+    // Fetch real-time critical findings count on load
     fetch('/api/findings')
       .then(res => res.json())
       .then(data => {
@@ -40,6 +36,23 @@ export default function Layout() {
         }
       })
       .catch(console.error);
+
+    // Subscribe to SSE for real-time live updates
+    const token = localStorage.getItem('ls_token');
+    const es = new EventSource(token ? `/api/events?token=${token}` : '/api/events');
+    
+    es.addEventListener('finding_detected', (e) => {
+      try {
+        const f = JSON.parse(e.data);
+        if (f.severity === 'CRITICAL') {
+          setCriticalAlerts(prev => prev + 1);
+        }
+      } catch (err) {}
+    });
+
+    return () => {
+      es.close();
+    };
   }, []);
 
   const isActive = (path) => {

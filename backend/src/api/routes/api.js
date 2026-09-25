@@ -7,10 +7,16 @@ const router = express.Router();
 const JWT_SECRET = () => process.env.JWT_SECRET || 'leakshield_jwt_secret';
 
 const requireAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
+  let token = '';
+  if (req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.slice(7);
+  } else if (req.query.token) {
+    token = req.query.token;
+  }
+  
+  if (!token) return res.status(401).json({ error: 'No token' });
   try {
-    const payload = jwt.verify(authHeader.slice(7), JWT_SECRET());
+    const payload = jwt.verify(token, JWT_SECRET());
     req.user = payload;
     next();
   } catch {

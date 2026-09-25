@@ -148,7 +148,7 @@ router.post('/github', async (req, res) => {
     // Set GitHub status to pending using this user's token
     await setGitHubCommitStatus(repoOwner, repoName, commitSha, 'pending', 'LeakShield is scanning this commit...', repo.user_id);
 
-    notifyClients(req.app, 'scan_started', { scanId, repository: repoFullName, commitSha, pusher: pusherName });
+    notifyClients(req.app, 'scan_started', { scanId, repository: repoFullName, commitSha, pusher: pusherName, userId: repo.user_id });
 
     // Fetch real files from GitHub API using this user's token
     const filesToScan = await fetchCommitFiles(repoOwner, repoName, commitSha, repo.user_id);

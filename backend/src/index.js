@@ -14,10 +14,25 @@ const PORT = process.env.PORT || 4000;
 const Redis = require('ioredis');
 const redisSub = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
 
+const { query } = require('./infrastructure/persistence/database');
+
 redisSub.subscribe('scan_events');
-redisSub.on('message', (channel, message) => {
+redisSub.on('message', async (channel, message) => {
   if (channel === 'scan_events') {
     const payload = JSON.parse(message);
+    
+    // If it's a finding, look up the user_id of the repository to isolate the broadcast
+    if (payload.event === 'finding_detected' && payload.data && payload.data.repositoryId) {
+      try {
+        const repoRow = (await query('SELECT user_id FROM repositories WHERE id = $1', [payload.data.repositoryId]))[0];
+        if (repoRow && repoRow.user_id) {
+          payload.data.userId = repoRow.user_id;
+        }
+      } catch (err) {
+        console.error('Error looking up repository owner for SSE broadcast:', err);
+      }
+    }
+    
     app.emit('sse_broadcast', payload);
   }
 });
@@ -40,17 +55,22 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  clients.push(res);
+  const userId = req.user?.id;
+  const clientObj = { res, userId };
+  clients.push(clientObj);
 
   req.on('close', () => {
-    clients = clients.filter(client => client !== res);
+    clients = clients.filter(client => client !== clientObj);
   });
 });
 
 // Broadcast events emitted by routes
 app.on('sse_broadcast', ({ event, data }) => {
   clients.forEach(client => {
-    client.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // Only broadcast to the user who owns the repository, or broadcast to all if no user specified
+    if (!data.userId || client.userId === data.userId) {
+      client.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    }
   });
 });
 
