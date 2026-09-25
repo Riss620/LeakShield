@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Shield, LayoutDashboard, Search, Settings, GitBranch,
@@ -17,6 +17,18 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('ls_user');
+      if (stored) {
+        setUser(JSON.parse(stored));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
   const isActive = (path) => {
     if (path === '/app') return location.pathname === '/app';
@@ -68,9 +80,13 @@ export default function Layout() {
       {/* Footer */}
       <div className="sidebar-footer">
         <div className="sidebar-user">
-          <div className="sidebar-avatar">R</div>
+          {user?.avatar ? (
+            <img src={user.avatar} alt="Avatar" className="sidebar-avatar" style={{ objectFit: 'cover' }} />
+          ) : (
+            <div className="sidebar-avatar">{user?.name ? user.name.charAt(0).toUpperCase() : 'U'}</div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="sidebar-user-name truncate">Riss620</div>
+            <div className="sidebar-user-name truncate">{user?.name || 'User'}</div>
             <div className="sidebar-user-role">Admin</div>
           </div>
         </div>
@@ -150,7 +166,11 @@ export default function Layout() {
             </div>
 
             {/* Avatar */}
-            <div className="topbar-avatar">R</div>
+            {user?.avatar ? (
+              <img src={user.avatar} alt="Avatar" className="topbar-avatar" style={{ objectFit: 'cover' }} />
+            ) : (
+              <div className="topbar-avatar">{user?.name ? user.name.charAt(0).toUpperCase() : 'U'}</div>
+            )}
           </div>
         </header>
 
